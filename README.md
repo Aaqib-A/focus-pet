@@ -1,13 +1,15 @@
 # Focus Pet
 
-A focus timer and work todo list where **every minute you focus feeds a virtual pet**.
+A focus timer and task tracker where **every minute you focus feeds a virtual pet**.
 
 - **Feeding = focus time.** Start a feeding when you start working. The pet eats while you work.
 - **Rest = your break.** When the feeding ends, the pet naps and you step away from the screen.
 - **It grows with every minute fed.** It hatches from an egg on its first full feeding and grows through hatchling, baby, child, teen and adult. Its size increases a little with every minute, so progress is always visible.
 - **Care between sessions.** You can bathe, play with, cuddle and give treats to the pet. Treats come from finishing tasks. Care is locked while the pet eats so focus time stays focused. Play is limited per break so breaks stay mostly off-screen.
 - **Gentle needs.** Fullness, energy, cleanliness and happiness drift slowly over time. A neglected pet looks sad or grubby, but it **never dies and never loses growth**.
-- **Todos tied to the timer.** Pick a task before each feeding. Each task shows its feedings (spent vs. estimated) and minutes focused.
+- **Work and personal tasks.** The task list has All, Work and Personal tabs, each with a count of open tasks. New tasks go into the tab you're on, and you can move a task to the other category when editing it.
+- **Steps (subtasks).** Break any task into a checklist of steps. Each task shows a progress bar for its steps, and steps can be renamed, ticked off or deleted.
+- **Tasks tied to the timer.** Pick a task before each feeding (the picker groups tasks by category). Each task shows its feedings (spent vs. estimated) and minutes focused. While you work, the timer shows the task's next step so you can tick it off without leaving the timer.
 
 Everything is stored in the browser (`localStorage`). There is no account and no backend, and nothing is sent anywhere.
 
@@ -21,7 +23,7 @@ npm run dev        # http://localhost:5173
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server with hot reload |
-| `npm test` | Unit tests for the game rules (Vitest) |
+| `npm test` | Unit tests for the game and task rules (Vitest) |
 | `npm run lint` | Lint (oxlint) |
 | `npm run build` | Type-check and build static files into `dist/` |
 | `npm run preview` | Serve the production build locally |
@@ -65,7 +67,7 @@ All the rules live in `src/core/`. The numbers are constants there and are easy 
 
 ```
 src/
-  core/        pure game rules: timer, growth, needs, presets and citations, dates (unit-tested)
+  core/        pure rules: timer, growth, needs, tasks and steps, presets and citations, dates (unit-tested)
   store/       Zustand store with localStorage persistence; side effects (chimes, notifications, toasts)
   hooks/       game clock, document-title countdown, useNow
   lib/         WebAudio chimes, Notification API, dev speed flag

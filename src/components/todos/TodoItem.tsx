@@ -1,10 +1,13 @@
 import { useState, type KeyboardEvent } from 'react'
 import { formatMinutes } from '../../core/format'
-import type { Todo } from '../../core/types'
+import { allStepsDone, categoryInfo, stepProgress } from '../../core/tasks'
+import type { TaskCategory, Todo } from '../../core/types'
 import { useAppStore } from '../../store/useAppStore'
+import { CategorySelect } from './AddTodo'
 import { ESTIMATES } from './estimates'
+import { StepBar, SubtaskList } from './Subtasks'
 
-export function TodoItem({ todo }: { todo: Todo }) {
+export function TodoItem({ todo, showCategory }: { todo: Todo; showCategory: boolean }) {
   const activeId = useAppStore((s) => s.game!.timer.activeTodoId)
   const phase = useAppStore((s) => s.game!.timer.phase)
   const toggleTodo = useAppStore((s) => s.toggleTodo)
@@ -12,29 +15,37 @@ export function TodoItem({ todo }: { todo: Todo }) {
   const deleteTodo = useAppStore((s) => s.deleteTodo)
   const setActiveTodo = useAppStore((s) => s.setActiveTodo)
 
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(todo.title)
-  const [draftEst, setDraftEst] = useState(todo.estimateMeals ? String(todo.estimateMeals) : '')
-
   const active = activeId === todo.id
   const feedingThis = active && phase === 'feeding'
+  const steps = stepProgress(todo)
 
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(todo.title)
+  const [draftEst, setDraftEst] = useState('')
+  const [draftCat, setDraftCat] = useState<TaskCategory>(todo.category)
+  // The task you're working on opens with its steps showing.
+  const [expanded, setExpanded] = useState(() => active && !todo.done && steps.total > 0)
+
+  const startEdit = () => {
+    setDraft(todo.title)
+    setDraftEst(todo.estimateMeals ? String(todo.estimateMeals) : '')
+    setDraftCat(todo.category)
+    setEditing(true)
+  }
   const save = () => {
     const title = draft.trim()
-    if (title) editTodo(todo.id, { title, estimateMeals: draftEst ? Number(draftEst) : null })
-    else setDraft(todo.title)
+    if (title) editTodo(todo.id, { title, category: draftCat, estimateMeals: draftEst ? Number(draftEst) : null })
     setEditing(false)
   }
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Enter') save()
-    if (e.key === 'Escape') {
-      setDraft(todo.title)
-      setEditing(false)
-    }
+    if (e.key === 'Escape') setEditing(false)
   }
 
   const est = todo.estimateMeals
   const over = est != null && todo.mealsSpent > est
+  const cat = categoryInfo(todo.category)
+  const stepsId = `steps-${todo.id}`
 
   return (
     <li className={`todo${todo.done ? ' todo--done' : ''}${active && !todo.done ? ' todo--active' : ''}`}>
@@ -58,6 +69,7 @@ export function TodoItem({ todo }: { todo: Todo }) {
               onKeyDown={onKey}
               aria-label="Task title"
             />
+            <CategorySelect value={draftCat} onChange={setDraftCat} />
             <select className="select est-select" value={draftEst} onChange={(e) => setDraftEst(e.target.value)} aria-label="Estimated feedings">
               <option value="">🍖 ?</option>
               {ESTIMATES.map((n) => (
@@ -72,10 +84,15 @@ export function TodoItem({ todo }: { todo: Todo }) {
           </div>
         ) : (
           <>
-            <span className="todo-title" onDoubleClick={() => !todo.done && setEditing(true)}>
+            <span className="todo-title" onDoubleClick={() => !todo.done && startEdit()}>
               {todo.title}
             </span>
             <span className="todo-meta">
+              {showCategory && (
+                <span className={`cat cat--${todo.category}`}>
+                  <span aria-hidden>{cat.icon}</span> {cat.label}
+                </span>
+              )}
               {feedingThis && <span className="badge badge--feed">🍖 Feeding now</span>}
               {(est != null || todo.mealsSpent > 0) && (
                 <span className={`meals${over ? ' meals--over' : ''}`} title="Feedings spent / estimated">
@@ -87,6 +104,35 @@ export function TodoItem({ todo }: { todo: Todo }) {
                 </span>
               )}
               {todo.minutesSpent > 0 && <span className="muted">{formatMinutes(todo.minutesSpent)} focused</span>}
+              {steps.total > 0 ? (
+                <button
+                  type="button"
+                  className="steps-toggle"
+                  aria-expanded={expanded}
+                  aria-controls={stepsId}
+                  onClick={() => setExpanded((v) => !v)}
+                  title={expanded ? 'Hide steps' : 'Show steps'}
+                >
+                  <span className="steps-caret" aria-hidden>
+                    {expanded ? '▾' : '▸'}
+                  </span>
+                  <StepBar done={steps.done} total={steps.total} />
+                  {steps.done}/{steps.total} steps
+                </button>
+              ) : (
+                !todo.done && (
+                  <button
+                    type="button"
+                    className="steps-toggle steps-toggle--add"
+                    aria-expanded={expanded}
+                    aria-controls={stepsId}
+                    onClick={() => setExpanded((v) => !v)}
+                  >
+                    + Add steps
+                  </button>
+                )
+              )}
+              {!todo.done && allStepsDone(todo) && <span className="badge badge--good">✓ All steps done</span>}
             </span>
           </>
         )}
@@ -107,7 +153,7 @@ export function TodoItem({ todo }: { todo: Todo }) {
             </button>
           )}
           {!todo.done && (
-            <button type="button" className="icon-btn" onClick={() => setEditing(true)} title="Edit" aria-label={`Edit “${todo.title}”`}>
+            <button type="button" className="icon-btn" onClick={startEdit} title="Edit" aria-label={`Edit “${todo.title}”`}>
               ✏️
             </button>
           )}
@@ -123,6 +169,8 @@ export function TodoItem({ todo }: { todo: Todo }) {
           </button>
         </div>
       )}
+
+      {expanded && !editing && <SubtaskList todo={todo} id={stepsId} autoFocus={steps.total === 0} />}
     </li>
   )
 }

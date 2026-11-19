@@ -57,9 +57,19 @@ export interface TimerState {
   playsThisBreak: number
 }
 
+export type TaskCategory = 'work' | 'personal'
+
+/** A step inside a task. Focus time is tracked on the parent task, not on steps. */
+export interface Subtask {
+  id: string
+  title: string
+  done: boolean
+}
+
 export interface Todo {
   id: string
   title: string
+  category: TaskCategory
   done: boolean
   createdAt: number
   completedAt: number | null
@@ -67,6 +77,8 @@ export interface Todo {
   estimateMeals: number | null
   mealsSpent: number
   minutesSpent: number
+  /** Ordered checklist of steps. */
+  subtasks: Subtask[]
 }
 
 export interface CycleConfig {

@@ -34,12 +34,14 @@ const ctx = (now: number, over: Partial<Ctx> = {}): Ctx => ({
 const todo = (id: string, title = id): Todo => ({
   id,
   title,
+  category: 'work',
   done: false,
   createdAt: T0,
   completedAt: null,
   estimateMeals: 2,
   mealsSpent: 0,
   minutesSpent: 0,
+  subtasks: [],
 })
 
 function game(): GameState {

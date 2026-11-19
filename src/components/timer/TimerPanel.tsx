@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { PRESETS, cycleFor } from '../../core/presets'
+import { CATEGORIES, allStepsDone, nextStep, stepProgress } from '../../core/tasks'
 import { elapsedMs, formatClock, isPaused, progress, remainingMs } from '../../core/timer'
 import { useNow } from '../../hooks/useNow'
 import { notifyPermission, requestNotifyPermission } from '../../lib/notify'
@@ -20,6 +21,8 @@ export function TimerPanel({ onOpenScience }: { onOpenScience: () => void }) {
   const stopFeed = useAppStore((s) => s.stopFeed)
   const skipRest = useAppStore((s) => s.skipRest)
   const setActiveTodo = useAppStore((s) => s.setActiveTodo)
+  const toggleSubtask = useAppStore((s) => s.toggleSubtask)
+  const toggleTodo = useAppStore((s) => s.toggleTodo)
   const [confirmStop, setConfirmStop] = useState(false)
 
   const { timer, pet, todos } = game
@@ -106,14 +109,35 @@ export function TimerPanel({ onOpenScience }: { onOpenScience: () => void }) {
                 onChange={(e) => setActiveTodo(e.target.value || null)}
               >
                 <option value="">No specific task</option>
-                {openTodos.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
+                {CATEGORIES.map((c) => {
+                  const list = openTodos.filter((t) => t.category === c.id)
+                  return (
+                    list.length > 0 && (
+                      <optgroup key={c.id} label={`${c.icon} ${c.label}`}>
+                        {list.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.title}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )
+                  )
+                })}
                 {activeTodo?.done && <option value={activeTodo.id}>✓ {activeTodo.title}</option>}
               </select>
             </label>
+          )}
+
+          {(idle || feeding) && activeTodo && !activeTodo.done && activeTodo.subtasks.length > 0 && (
+            <NextStep
+              title={nextStep(activeTodo)?.title ?? null}
+              {...stepProgress(activeTodo)}
+              onStepDone={() => {
+                const step = nextStep(activeTodo)
+                if (step) toggleSubtask(activeTodo.id, step.id)
+              }}
+              onTaskDone={allStepsDone(activeTodo) ? () => toggleTodo(activeTodo.id) : null}
+            />
           )}
 
           <div className="timer-controls">
@@ -200,5 +224,45 @@ export function TimerPanel({ onOpenScience }: { onOpenScience: () => void }) {
 
       {resting && <BreakIdeas />}
     </section>
+  )
+}
+
+/** The active task's next unticked step, so you can tick it off without leaving the timer. */
+function NextStep({
+  title,
+  done,
+  total,
+  onStepDone,
+  onTaskDone,
+}: {
+  title: string | null
+  done: number
+  total: number
+  onStepDone: () => void
+  onTaskDone: (() => void) | null
+}) {
+  return (
+    <div className="next-step" role="group" aria-label="Next step">
+      <span className="next-step-label">
+        {title ? 'Next step' : 'Steps'} · {done}/{total} done
+      </span>
+      {title ? (
+        <>
+          <span className="next-step-title">{title}</span>
+          <button type="button" className="btn btn--sm" onClick={onStepDone}>
+            ✓ Done
+          </button>
+        </>
+      ) : (
+        <>
+          <span className="next-step-title">All steps done.</span>
+          {onTaskDone && (
+            <button type="button" className="btn btn--sm" onClick={onTaskDone} title="Mark the task done (earns a treat)">
+              ✓ Finish task
+            </button>
+          )}
+        </>
+      )}
+    </div>
   )
 }

@@ -3,8 +3,9 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import * as G from '../core/game'
 import { stageLabel } from '../core/growth'
 import { DEFAULT_SETTINGS, clampCycle, cycleFor } from '../core/presets'
+import * as T from '../core/tasks'
 import { pauseTimer, resumeTimer } from '../core/timer'
-import type { GameEvent, GameState, Settings, Species, Todo } from '../core/types'
+import type { GameEvent, GameState, Settings, Species, TaskCategory, Todo } from '../core/types'
 import { MINUTE_MS } from '../lib/speed'
 import { notify } from '../lib/notify'
 import { chime } from '../lib/sound'
@@ -20,6 +21,8 @@ export interface Toast {
 interface AppState {
   game: GameState | null
   settings: Settings
+  /** Which task tab is showing. Remembered between visits. */
+  taskTab: T.TaskTab
 
   // transient (not persisted)
   toasts: Toast[]
@@ -41,12 +44,18 @@ interface AppState {
   cuddle: () => void
   treat: () => void
 
-  addTodo: (title: string, estimateMeals: number | null) => void
-  editTodo: (id: string, patch: Partial<Pick<Todo, 'title' | 'estimateMeals'>>) => void
+  setTaskTab: (tab: T.TaskTab) => void
+  addTodo: (title: string, category: TaskCategory, estimateMeals: number | null) => void
+  editTodo: (id: string, patch: Partial<Pick<Todo, 'title' | 'category' | 'estimateMeals'>>) => void
   deleteTodo: (id: string) => void
   toggleTodo: (id: string) => void
   setActiveTodo: (id: string | null) => void
-  clearDone: () => void
+  clearDone: (tab: T.TaskTab) => void
+
+  addSubtask: (todoId: string, title: string) => void
+  toggleSubtask: (todoId: string, subId: string) => void
+  editSubtask: (todoId: string, subId: string, title: string) => void
+  deleteSubtask: (todoId: string, subId: string) => void
 
   updateSettings: (patch: Partial<Settings>) => void
   toast: (text: string, tone?: Toast['tone']) => void
@@ -142,6 +151,7 @@ export const useAppStore = create<AppState>()(
       return {
         game: null,
         settings: DEFAULT_SETTINGS,
+        taskTab: 'all',
         toasts: [],
         careFx: null,
 
@@ -161,39 +171,21 @@ export const useAppStore = create<AppState>()(
         cuddle: () => care('cuddling', G.cuddle),
         treat: () => care('treat', G.giveTreat),
 
-        addTodo: (title, estimateMeals) =>
-          update((g) => ({
-            ...g,
-            todos: [
-              ...g.todos,
-              {
-                id: uid(),
-                title: title.trim(),
-                done: false,
-                createdAt: Date.now(),
-                completedAt: null,
-                estimateMeals,
-                mealsSpent: 0,
-                minutesSpent: 0,
-              },
-            ],
-          })),
+        setTaskTab: (taskTab) => set({ taskTab }),
+        addTodo: (title, category, estimateMeals) =>
+          update((g) => ({ ...g, todos: [...g.todos, T.newTodo(uid(), title, category, estimateMeals, Date.now())] })),
         editTodo: (id, patch) =>
           update((g) => ({ ...g, todos: g.todos.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
-        deleteTodo: (id) =>
-          update((g) => ({
-            ...g,
-            todos: g.todos.filter((t) => t.id !== id),
-            timer: g.timer.activeTodoId === id ? { ...g.timer, activeTodoId: null } : g.timer,
-          })),
+        deleteTodo: (id) => update((g) => T.deleteTodo(g, id)),
         toggleTodo: (id) => update((g) => G.toggleTodo(g, id, Date.now())),
         setActiveTodo: (id) => update((g) => ({ ...g, timer: { ...g.timer, activeTodoId: id } })),
-        clearDone: () =>
-          update((g) => {
-            const keep = g.todos.filter((t) => !t.done)
-            const activeGone = !keep.some((t) => t.id === g.timer.activeTodoId)
-            return { ...g, todos: keep, timer: activeGone ? { ...g.timer, activeTodoId: null } : g.timer }
-          }),
+        clearDone: (tab) => update((g) => T.clearDone(g, tab)),
+
+        addSubtask: (todoId, title) => update((g) => ({ ...g, todos: T.addSubtask(g.todos, todoId, uid(), title) })),
+        toggleSubtask: (todoId, subId) => update((g) => ({ ...g, todos: T.toggleSubtask(g.todos, todoId, subId) })),
+        editSubtask: (todoId, subId, title) =>
+          update((g) => ({ ...g, todos: T.renameSubtask(g.todos, todoId, subId, title) })),
+        deleteSubtask: (todoId, subId) => update((g) => ({ ...g, todos: T.deleteSubtask(g.todos, todoId, subId) })),
 
         updateSettings: (patch) =>
           set((s) => ({
@@ -212,13 +204,15 @@ export const useAppStore = create<AppState>()(
       name: 'focus-pet',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ game: s.game, settings: s.settings }),
+      partialize: (s) => ({ game: s.game, settings: s.settings, taskTab: s.taskTab }),
       merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<Pick<AppState, 'game' | 'settings'>>
+        const p = (persisted ?? {}) as Partial<Pick<AppState, 'game' | 'settings' | 'taskTab'>>
         return {
           ...current,
-          game: p.game ?? null,
+          // Older saves have no task categories or steps; fill them in.
+          game: p.game ? T.normalizeGame(p.game) : null,
           settings: { ...DEFAULT_SETTINGS, ...p.settings },
+          taskTab: T.isTaskTab(p.taskTab) ? p.taskTab : current.taskTab,
         }
       },
       onRehydrateStorage: () => (state) => {
